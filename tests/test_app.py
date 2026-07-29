@@ -15,6 +15,15 @@ def test_health(client):
     assert response.json() == {"status": "ok", "product": "FastOffice", "version": "0.1.0"}
 
 
+def test_development_login_form_is_environment_gated(client, monkeypatch):
+    response = client.get("/login")
+    assert 'action="/auth/dev"' in response.text
+    monkeypatch.setenv("FASTOFFICE_ENV", "production")
+    response = client.get("/login")
+    assert 'action="/auth/dev"' not in response.text
+    assert "Continue with Google" in response.text
+
+
 def test_protected_routes_redirect(client):
     for path in ("/app", "/pilot", "/team", "/settings"):
         response = client.get(path, follow_redirects=False)

@@ -77,7 +77,11 @@ def get():
 def get(session, next: str = "/", error: str = ""):
     if current_user(session):
         return RedirectResponse(next if next.startswith("/") else "/app", status_code=303)
-    return views.login_page(next, error)
+    dev_enabled = (
+        os.getenv("FASTOFFICE_DEV_LOGIN", "true").lower() in {"1", "true", "yes"}
+        and os.getenv("FASTOFFICE_ENV", "development") != "production"
+    )
+    return views.login_page(next, error, dev_enabled)
 
 
 @rt("/auth/dev")

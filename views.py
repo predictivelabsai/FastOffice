@@ -193,7 +193,7 @@ def landing_page(auth_error: str = ""):
     )
 
 
-def login_page(next_path: str = "/", error: str = ""):
+def login_page(next_path: str = "/", error: str = "", dev_enabled: bool = False):
     return Html(
         head("Sign in"),
         Body(
@@ -220,7 +220,7 @@ def login_page(next_path: str = "/", error: str = ""):
                             href=f"/auth/google?next={quote(next_path)}",
                             cls="google-button",
                         ),
-                        Div(Span(), Small("or, for local development"), Span(), cls="divider"),
+                        Div(Span(), Small("or, for local development"), Span(), cls="divider") if dev_enabled else None,
                         Form(
                             Label("Email", Input(name="email", type="email", value="kaljuvee@gmail.com", autocomplete="email", required=True)),
                             Input(name="next_path", type="hidden", value=next_path),
@@ -228,9 +228,9 @@ def login_page(next_path: str = "/", error: str = ""):
                             method="post",
                             action="/auth/dev",
                             cls="login-form",
-                        ),
+                        ) if dev_enabled else None,
                         P(error, cls="notice error") if error else None,
-                        Small("Development sign-in is disabled in production. By continuing, you agree to the deployment's terms and privacy policy.", cls="login-terms"),
+                        Small("By continuing, you agree to the deployment's terms and privacy policy.", cls="login-terms"),
                         cls="login-card",
                     ),
                     cls="login-panel",
