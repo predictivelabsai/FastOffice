@@ -1,0 +1,23 @@
+services:
+  fastoffice:
+    build: .
+    ports:
+      - "5020:5020"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      FASTOFFICE_ENV: ${FASTOFFICE_ENV:-production}
+      FASTOFFICE_PORT: "5020"
+      FASTOFFICE_DB: /data/fastoffice.sqlite
+      FASTOFFICE_PUBLIC_URL: ${FASTOFFICE_PUBLIC_URL:-http://localhost:5020}
+      FASTOFFICE_SESSION_SECRET: ${FASTOFFICE_SESSION_SECRET:?Set FASTOFFICE_SESSION_SECRET}
+      FASTOFFICE_ENCRYPTION_KEY: ${FASTOFFICE_ENCRYPTION_KEY:?Set FASTOFFICE_ENCRYPTION_KEY}
+      FASTOFFICE_BOOTSTRAP_ADMIN: ${FASTOFFICE_BOOTSTRAP_ADMIN:-kaljuvee@gmail.com}
+      FASTOFFICE_DEV_LOGIN: "false"
+    volumes:
+      - fastoffice-data:/data
+    restart: unless-stopped
+
+volumes:
+  fastoffice-data:

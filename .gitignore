@@ -150,6 +150,10 @@ activemq-data/
 # Environments
 .env
 .envrc
+
+# FastOffice runtime and browser-session state
+data/
+.playwright-cli/
 .venv
 env/
 venv/
