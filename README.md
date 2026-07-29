@@ -10,6 +10,11 @@ white-labelling, and AI provider configuration.
 
 See [the architecture and delivery plan](docs/ARCHITECTURE_PLAN.md).
 
+FastPilot supports live xAI responses through the hosted runtime key and
+encrypted organisation BYOK. Its product adapters are intentionally
+contract-driven: unsupported mutations are blocked instead of being reported
+as successful.
+
 ## Run locally
 
 ```bash

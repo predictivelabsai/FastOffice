@@ -10,12 +10,15 @@ from urllib.request import Request as UrlRequest, urlopen
 
 from dotenv import load_dotenv
 from fasthtml.common import *
+import httpx
 from starlette.responses import JSONResponse, RedirectResponse
 
 load_dotenv()
 
 import db
 import views
+from ai import ProviderError, chat
+from adapters import execute_create
 from products import BY_SLUG, proposed_action
 from security import encrypt_secret, sign_ticket
 
@@ -203,7 +206,7 @@ def post(session, conversation_id: int, message: str):
     if isinstance(ctx, RedirectResponse):
         return ctx
     user, org = ctx
-    current, _ = db.conversation(user["id"], org["id"], conversation_id)
+    current, previous = db.conversation(user["id"], org["id"], conversation_id)
     db.add_message(current["id"], "user", message.strip())
     proposal = proposed_action(message)
     if proposal:
@@ -223,14 +226,28 @@ def post(session, conversation_id: int, message: str):
         response = f"I prepared a {product['name']} action. Review the details in the canvas before I apply it."
         db.add_message(current["id"], "assistant", response, artifact)
     else:
-        artifact = {
-            "kind": "search_results",
-            "product": "FastOffice",
-            "title": "Workspace search",
-            "summary": message.strip()[:140],
-            "detail": "Product search adapters are ready to consume the sister OpenAPI contracts; tenant-scoped credentials are required before live aggregation.",
-        }
-        db.add_message(current["id"], "assistant", "I can search across the suite. Live product access will activate as each tenant-safe adapter is connected.", artifact)
+        try:
+            answer, disclosure = chat(
+                db.provider_setting(org["id"]),
+                [*previous, {"role": "user", "content": message.strip()}],
+            )
+            artifact = {
+                "kind": "ai_response",
+                "product": "FastPilot",
+                "title": "AI response",
+                "summary": f"Processed by {disclosure['provider'].upper()}",
+                "detail": f"Model: {disclosure['model']}. No external workspace mutation was performed.",
+            }
+            db.add_message(current["id"], "assistant", answer, artifact)
+        except ProviderError as exc:
+            artifact = {
+                "kind": "provider_error",
+                "product": "FastPilot",
+                "title": "Provider connection needed",
+                "summary": str(exc),
+                "detail": "An administrator can select the hosted xAI connection or save a bring-your-own key in Settings.",
+            }
+            db.add_message(current["id"], "assistant", str(exc), artifact)
     return RedirectResponse(f"/pilot?conversation={current['id']}", status_code=303)
 
 
@@ -240,10 +257,28 @@ def post(session, action_id: int, decision: str):
     if isinstance(ctx, RedirectResponse):
         return ctx
     user, org = ctx
-    result = db.resolve_action(user["id"], org["id"], action_id, decision == "confirm")
+    pending = db.pending_action(user["id"], org["id"], action_id)
+    if not pending:
+        return RedirectResponse("/pilot", status_code=303)
+    if decision != "confirm":
+        result = db.resolve_action(user["id"], org["id"], action_id, "cancelled")
+    elif pending["action"] != "create":
+        result = db.resolve_action(user["id"], org["id"], action_id, "blocked")
+    else:
+        try:
+            payload = json.loads(pending["payload_json"])
+            external = execute_create(pending["product"], payload, pending["idempotency_key"])
+            result = db.resolve_action(user["id"], org["id"], action_id, "completed", external)
+        except (ValueError, httpx.HTTPError, HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
+            result = db.resolve_action(user["id"], org["id"], action_id, "failed", {"error": str(exc)})
     if not result:
         return RedirectResponse("/pilot", status_code=303)
-    message = "Action confirmed and recorded." if result["status"] == "completed" else "Action cancelled. Nothing was changed."
+    message = {
+        "completed": "Action completed through the product API and recorded.",
+        "cancelled": "Action cancelled. Nothing was changed.",
+        "blocked": "This action is not exposed safely by the product API yet, so nothing was changed.",
+        "failed": "The product API could not complete this action. Nothing was marked as completed.",
+    }[result["status"]]
     db.add_message(result["conversation_id"], "assistant", message)
     return RedirectResponse(f"/pilot?conversation={result['conversation_id']}", status_code=303)
 
@@ -300,9 +335,9 @@ def get(session, token: str):
     if not user:
         session["invite_token"] = token
         return RedirectResponse(f"/login?next=/invite/{quote(token)}", status_code=303)
-    if db.accept_invitation(user["id"], token):
-        org = db.membership(user["id"])
-        session["organisation_id"] = org["id"]
+    organisation_id = db.accept_invitation(user["id"], token)
+    if organisation_id:
+        session["organisation_id"] = organisation_id
         return RedirectResponse("/app", status_code=303)
     return RedirectResponse("/team?message=Invitation+is+invalid,+expired,+or+belongs+to+another+email", status_code=303)
 

@@ -30,10 +30,11 @@ def head(title: str, description: str = "Your work. Your data. Your freedom.") -
     )
 
 
-def logo(href: str = "/", compact: bool = False):
+def logo(href: str = "/", compact: bool = False, org: dict | None = None):
+    mark = Img(src=org["logo_url"], alt="", cls="brand-image") if org and org.get("logo_url") else Span("F", cls="brand-mark")
     return A(
-        Span("F", cls="brand-mark"),
-        None if compact else Span("FastOffice", cls="brand-name"),
+        mark,
+        None if compact else Span(org["name"] if org else "FastOffice", cls="brand-name"),
         href=href,
         cls="brand",
         aria_label="FastOffice home",
@@ -245,7 +246,7 @@ def login_page(next_path: str = "/", error: str = "", dev_enabled: bool = False)
 def app_header(user: dict, org: dict, active: str = "home"):
     return Header(
         Div(
-            logo("/app"),
+            logo("/app", org=org),
             Nav(
                 A("Home", href="/app", cls="active" if active == "home" else ""),
                 A("FastPilot", href="/pilot", cls="active" if active == "pilot" else ""),
@@ -386,6 +387,25 @@ def canvas_content(artifact: dict | None):
             Div(Span("◇", cls="empty-canvas-icon"), H3("Your canvas is ready"), P("FastPilot will show documents, tables, charts and proposed actions here."), cls="empty-canvas"),
         )
     action = artifact.get("action")
+    if not action:
+        return (
+            Div(
+                Div(Span("FASTPILOT CONTEXT", cls="pilot-section-label"), H3(artifact.get("title", "Response details"))),
+                Button("×", onclick="toggleCanvas()", cls="canvas-close"),
+                cls="canvas-head",
+            ),
+            Div(
+                Span(artifact.get("product", "FastOffice"), cls="artifact-product"),
+                H2(artifact.get("summary", "Response details")),
+                P(artifact.get("detail", "")),
+                Div(
+                    Strong("Safe by design"),
+                    P("This response did not change any external workspace data."),
+                    cls="effect-card",
+                ),
+                cls="artifact-body",
+            ),
+        )
     return (
         Div(Div(Span("PROPOSED ACTION", cls="pilot-section-label"), H3(artifact.get("title", "Review action"))), Button("×", onclick="toggleCanvas()", cls="canvas-close"), cls="canvas-head"),
         Div(

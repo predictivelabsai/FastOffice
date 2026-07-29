@@ -1,6 +1,6 @@
 # FastOffice architecture and delivery plan
 
-Status: accepted direction, implementation pending
+Status: control-plane MVP deployed; cross-service tenancy and SSO rollout in progress
 
 ## Product goal
 
@@ -22,6 +22,13 @@ experience across:
 
 FastCalendar is a new service. FastMail exists, but currently demonstrates a
 webmail client over synthetic data rather than a production mail server.
+
+Current implementation note (July 2026): FastOffice provides the landing page,
+suite shell, organisation RBAC, invitations, branding, encrypted AI settings,
+live xAI chat, action confirmation/auditing, signed suite-ticket issuer, and
+typed adapters for the seven existing OpenAPI contracts. Sister-service ticket
+redemption, tenant-safe API upgrades, cross-suite search/recents, and the new
+FastCalendar service remain staged work and are not represented as complete.
 
 ## Architecture decision
 

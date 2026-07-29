@@ -231,7 +231,7 @@ def create_invitation(actor_id: int, organisation_id: int, email: str, role: str
     return token, invite
 
 
-def accept_invitation(user_id: int, token: str) -> bool:
+def accept_invitation(user_id: int, token: str) -> int | None:
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     stamp = now()
     with connect() as con:
@@ -242,7 +242,7 @@ def accept_invitation(user_id: int, token: str) -> bool:
             (token_hash, stamp),
         ).fetchone()
         if not user or not invite or user["email"] != invite["email"]:
-            return False
+            return None
         con.execute(
             """INSERT INTO memberships(user_id,organisation_id,role,created_at) VALUES(?,?,?,?)
                ON CONFLICT(user_id,organisation_id) DO UPDATE SET role=excluded.role""",
@@ -250,7 +250,7 @@ def accept_invitation(user_id: int, token: str) -> bool:
         )
         con.execute("UPDATE invitations SET accepted_at=? WHERE id=?", (stamp, invite["id"]))
         audit(con, invite["organisation_id"], user_id, "invitation.accepted", {"invitation_id": invite["id"]})
-    return True
+    return int(invite["organisation_id"])
 
 
 def update_org(actor_id: int, organisation_id: int, name: str, accent: str, logo_url: str) -> bool:
@@ -354,7 +354,18 @@ def create_pending_action(user_id: int, organisation_id: int, conversation_id: i
         return row
 
 
-def resolve_action(user_id: int, organisation_id: int, action_id: int, approve: bool) -> dict | None:
+def pending_action(user_id: int, organisation_id: int, action_id: int) -> dict | None:
+    with connect() as con:
+        row = con.execute(
+            "SELECT * FROM pending_actions WHERE id=? AND user_id=? AND organisation_id=? AND status='pending'",
+            (action_id, user_id, organisation_id),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def resolve_action(user_id: int, organisation_id: int, action_id: int, status: str, result: dict | None = None) -> dict | None:
+    if status not in {"completed", "cancelled", "blocked", "failed"}:
+        return None
     stamp = now()
     with connect() as con:
         row = con.execute(
@@ -363,9 +374,8 @@ def resolve_action(user_id: int, organisation_id: int, action_id: int, approve: 
         ).fetchone()
         if not row:
             return None
-        status = "completed" if approve else "cancelled"
         con.execute("UPDATE pending_actions SET status=?,resolved_at=? WHERE id=?", (status, stamp, action_id))
-        audit(con, organisation_id, user_id, f"pilot.action_{status}", {"action_id": action_id})
+        audit(con, organisation_id, user_id, f"pilot.action_{status}", {"action_id": action_id, "result": result or {}})
         result = dict(row)
         result["status"] = status
         return result

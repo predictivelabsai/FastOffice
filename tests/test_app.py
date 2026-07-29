@@ -49,9 +49,9 @@ def test_invitation_is_email_bound(authed, app_module):
     org = app_module.db.membership(owner["id"])
     token, _ = app_module.db.create_invitation(owner["id"], org["id"], "member@example.com", "member")
     other = app_module.db.ensure_user("other@example.com")
-    assert app_module.db.accept_invitation(other["id"], token) is False
+    assert app_module.db.accept_invitation(other["id"], token) is None
     invited = app_module.db.ensure_user("member@example.com")
-    assert app_module.db.accept_invitation(invited["id"], token) is True
+    assert app_module.db.accept_invitation(invited["id"], token) == org["id"]
     assert app_module.db.membership(invited["id"], org["id"])["role"] == "member"
 
 
@@ -100,6 +100,28 @@ def test_pilot_requires_confirmation(authed, app_module):
     with app_module.db.connect() as con:
         action = con.execute("SELECT * FROM pending_actions WHERE id=?", (action["id"],)).fetchone()
         assert action["status"] == "cancelled"
+
+
+def test_pilot_does_not_fake_unsupported_mutation(authed, app_module):
+    authed.get("/pilot")
+    with app_module.db.connect() as con:
+        conversation = con.execute("SELECT id FROM conversations ORDER BY id DESC").fetchone()
+    response = authed.post(
+        "/pilot/message",
+        data={"conversation_id": conversation["id"], "message": "Delete the old FastDocs strategy brief"},
+        follow_redirects=False,
+    )
+    with app_module.db.connect() as con:
+        action = con.execute("SELECT * FROM pending_actions ORDER BY id DESC").fetchone()
+    result = authed.post(
+        "/pilot/action",
+        data={"action_id": action["id"], "decision": "confirm"},
+        follow_redirects=True,
+    )
+    assert "not exposed safely" in result.text
+    with app_module.db.connect() as con:
+        action = con.execute("SELECT * FROM pending_actions WHERE id=?", (action["id"],)).fetchone()
+        assert action["status"] == "blocked"
 
 
 def test_launch_uses_canonical_subdomain_until_sso_callbacks_ready(authed):
