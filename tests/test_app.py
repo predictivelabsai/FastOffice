@@ -1,4 +1,10 @@
 import json
+import re
+
+
+def csrf(client, path):
+    response = client.get(path)
+    return re.search(r'name="csrf_token"[^>]+value="([^"]+)"', response.text).group(1)
 
 
 def test_landing_has_suite_and_sign_in(client):
@@ -23,6 +29,85 @@ def test_development_login_form_is_environment_gated(client, monkeypatch):
     response = client.get("/login")
     assert 'action="/auth/dev"' not in response.text
     assert "Continue with Google" in response.text
+
+
+def test_local_registration_verification_and_login(client, app_module, monkeypatch):
+    sent = {}
+
+    def capture(email, name, purpose, token):
+        sent.update(email=email, name=name, purpose=purpose, token=token)
+        return True
+
+    monkeypatch.setattr(app_module, "send_account_link", capture)
+    response = client.post(
+        "/auth/local/register",
+        data={
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "password": "correct horse battery",
+            "password_confirm": "correct horse battery",
+            "next_path": "/app",
+            "csrf_token": csrf(client, "/register"),
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert sent["purpose"] == "verify"
+    assert app_module.db.local_login("ada@example.com", "correct horse battery") is None
+
+    response = client.get(f"/auth/local/verify/{sent['token']}", follow_redirects=False)
+    assert response.headers["location"] == "/app"
+    client.get("/logout")
+    response = client.post(
+        "/auth/local/login",
+        data={
+            "email": "ada@example.com",
+            "password": "correct horse battery",
+            "next_path": "/pilot",
+            "csrf_token": csrf(client, "/login"),
+        },
+        follow_redirects=False,
+    )
+    assert response.headers["location"] == "/pilot"
+
+
+def test_password_reset_is_generic_and_single_use(client, app_module, monkeypatch):
+    user = app_module.db.ensure_user("google-only@example.com", "Google User", google_linked=True)
+    sent = {}
+    monkeypatch.setattr(
+        app_module,
+        "send_account_link",
+        lambda email, name, purpose, token: sent.update(token=token, purpose=purpose) or True,
+    )
+    response = client.post(
+        "/auth/local/forgot",
+        data={"email": user["email"], "csrf_token": csrf(client, "/forgot-password")},
+        follow_redirects=False,
+    )
+    assert "If+an+account+exists" in response.headers["location"]
+    assert sent["purpose"] == "reset"
+
+    response = client.post(
+        "/auth/local/reset",
+        data={
+            "token": sent["token"],
+            "password": "a new secure password",
+            "password_confirm": "a new secure password",
+            "csrf_token": csrf(client, f"/reset-password?token={sent['token']}"),
+        },
+        follow_redirects=False,
+    )
+    assert response.headers["location"] == "/app"
+    assert app_module.db.local_login(user["email"], "a new secure password")
+    assert app_module.db.reset_password(sent["token"], "another secure password") is None
+
+    client.get("/logout")
+    response = client.post(
+        "/auth/local/forgot",
+        data={"email": "missing@example.com", "csrf_token": csrf(client, "/forgot-password")},
+        follow_redirects=False,
+    )
+    assert "If+an+account+exists" in response.headers["location"]
 
 
 def test_protected_routes_redirect(client):

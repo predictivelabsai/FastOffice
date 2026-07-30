@@ -17,6 +17,7 @@ load_dotenv()
 
 import db
 import views
+from account_email import send_account_link
 from ai import ProviderError, chat
 from adapters import aggregate, execute_create
 from products import BY_SLUG, proposed_action
@@ -63,6 +64,19 @@ def callback_uri(request) -> str:
     return f"{proto}://{host}/auth/google/callback"
 
 
+def csrf_for(session) -> str:
+    token = session.get("csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session["csrf_token"] = token
+    return token
+
+
+def valid_csrf(session, token: str) -> bool:
+    expected = session.get("csrf_token", "")
+    return bool(expected and token and secrets.compare_digest(expected, token))
+
+
 @rt("/")
 def get(session, auth: str = ""):
     if current_user(session):
@@ -77,14 +91,113 @@ def get():
 
 
 @rt("/login")
-def get(session, next: str = "/", error: str = ""):
+def get(session, next: str = "/", error: str = "", message: str = ""):
     if current_user(session):
         return RedirectResponse(next if next.startswith("/") else "/app", status_code=303)
     dev_enabled = (
         os.getenv("FASTOFFICE_DEV_LOGIN", "true").lower() in {"1", "true", "yes"}
         and os.getenv("FASTOFFICE_ENV", "development") != "production"
     )
-    return views.login_page(next, error, dev_enabled)
+    return views.login_page(next, error, dev_enabled, message, csrf_for(session))
+
+
+def start_session(session, user: dict, next_path: str = "/app"):
+    session.clear()
+    session["user_id"] = user["id"]
+    org = db.membership(user["id"])
+    session["organisation_id"] = org["id"]
+    return RedirectResponse(next_path if next_path.startswith("/") else "/app", status_code=303)
+
+
+@rt("/register")
+def get(session, next: str = "/app", error: str = "", message: str = ""):
+    if current_user(session):
+        return RedirectResponse("/app", status_code=303)
+    return views.register_page(next if next.startswith("/") else "/app", error, message, csrf_for(session))
+
+
+@rt("/forgot-password")
+def get(session, message: str = "", error: str = ""):
+    if current_user(session):
+        return RedirectResponse("/app", status_code=303)
+    return views.forgot_password_page(message, error, csrf_for(session))
+
+
+@rt("/reset-password")
+def get(session, token: str = "", error: str = ""):
+    if current_user(session):
+        return RedirectResponse("/app", status_code=303)
+    if not token:
+        return RedirectResponse("/forgot-password?error=The+reset+link+is+invalid+or+expired", status_code=303)
+    return views.reset_password_page(token, error, csrf_for(session))
+
+
+@rt("/auth/local/register")
+def post(session, name: str, email: str, password: str, password_confirm: str, next_path: str = "/app", csrf_token: str = ""):
+    safe_next = next_path if next_path.startswith("/") else "/app"
+    if not valid_csrf(session, csrf_token):
+        return RedirectResponse(f"/register?next={quote(safe_next)}&error=Please+try+again", status_code=303)
+    if password != password_confirm:
+        return RedirectResponse(f"/register?next={quote(safe_next)}&error=Passwords+do+not+match", status_code=303)
+    user, error = db.prepare_registration(email, name, password)
+    if not user:
+        return RedirectResponse(f"/register?next={quote(safe_next)}&error={quote(error)}", status_code=303)
+    token = db.issue_auth_token(user["id"], "verify", 24 * 3600)
+    if not send_account_link(user["email"], user["name"], "verify", token):
+        return RedirectResponse(f"/register?next={quote(safe_next)}&error=Verification+email+could+not+be+sent", status_code=303)
+    return RedirectResponse(f"/register?next={quote(safe_next)}&message=Check+your+email+to+verify+your+account", status_code=303)
+
+
+@rt("/auth/local/verify/{token}")
+def get(session, token: str):
+    verified = db.consume_auth_token(token, "verify")
+    if not verified:
+        return RedirectResponse("/login?error=The+verification+link+is+invalid+or+expired", status_code=303)
+    user = db.ensure_user(verified["email"], verified["name"])
+    return start_session(session, user)
+
+
+@rt("/auth/local/login")
+def post(session, email: str, password: str, next_path: str = "/app", csrf_token: str = ""):
+    if not valid_csrf(session, csrf_token):
+        return RedirectResponse("/login?error=Please+try+again", status_code=303)
+    user = db.local_login(email, password)
+    if not user:
+        return RedirectResponse(
+            f"/login?next={quote(next_path if next_path.startswith('/') else '/app')}&error=Invalid+email+or+password",
+            status_code=303,
+        )
+    return start_session(session, user, next_path)
+
+
+@rt("/auth/local/forgot")
+def post(session, email: str, csrf_token: str = ""):
+    if not valid_csrf(session, csrf_token):
+        return RedirectResponse("/forgot-password?error=Please+try+again", status_code=303)
+    user, _ = db.prepare_password_reset(email)
+    if user:
+        token = db.issue_auth_token(user["id"], "reset", 3600)
+        send_account_link(user["email"], user["name"], "reset", token)
+    return RedirectResponse(
+        "/forgot-password?message=If+an+account+exists,+a+reset+link+is+on+its+way",
+        status_code=303,
+    )
+
+
+@rt("/auth/local/reset")
+def post(session, token: str, password: str, password_confirm: str, csrf_token: str = ""):
+    if not valid_csrf(session, csrf_token):
+        return RedirectResponse(f"/reset-password?token={quote(token)}&error=Please+try+again", status_code=303)
+    if password != password_confirm or len(password or "") < 10:
+        return RedirectResponse(
+            f"/reset-password?token={quote(token)}&error=Passwords+must+match+and+contain+at+least+10+characters",
+            status_code=303,
+        )
+    reset_user = db.reset_password(token, password)
+    if not reset_user:
+        return RedirectResponse("/forgot-password?error=The+reset+link+is+invalid+or+expired", status_code=303)
+    user = db.ensure_user(reset_user["email"], reset_user["name"])
+    return start_session(session, user)
 
 
 @rt("/auth/dev")
@@ -92,10 +205,7 @@ def post(session, email: str, next_path: str = "/"):
     if os.getenv("FASTOFFICE_DEV_LOGIN", "true").lower() not in {"1", "true", "yes"} or os.getenv("FASTOFFICE_ENV", "development") == "production":
         return RedirectResponse("/login?error=Development+sign-in+is+disabled", status_code=303)
     user = db.ensure_user(email, email.split("@")[0].replace(".", " ").title())
-    session["user_id"] = user["id"]
-    org = db.membership(user["id"])
-    session["organisation_id"] = org["id"]
-    return RedirectResponse(next_path if next_path.startswith("/") else "/app", status_code=303)
+    return start_session(session, user, next_path)
 
 
 @rt("/auth/google")
@@ -144,10 +254,9 @@ def get(session, request, code: str = "", state: str = "", error: str = ""):
         if email not in emails and email.rsplit("@", 1)[-1] not in domains:
             return RedirectResponse("/login?error=This+Google+account+is+not+authorised", status_code=303)
     user = db.ensure_user(email, info.get("name") or email, google_linked=True)
-    session["user_id"] = user["id"]
-    org = db.membership(user["id"])
-    session["organisation_id"] = org["id"]
-    return RedirectResponse(session.pop("auth_next", "/app"), status_code=303)
+    db.verify_password_credential_for_google(user["id"])
+    next_path = session.pop("auth_next", "/app")
+    return start_session(session, user, next_path)
 
 
 @rt("/logout")

@@ -1,9 +1,12 @@
 """FastOffice persistence and domain operations."""
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
 import json
 import os
+import re
 import secrets
 import sqlite3
 import time
@@ -22,6 +25,28 @@ CREATE TABLE IF NOT EXISTS users (
   google_linked INTEGER NOT NULL DEFAULT 0,
   is_platform_admin INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS password_credentials (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  password_hash TEXT NOT NULL,
+  is_verified INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS auth_tokens (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  purpose TEXT NOT NULL CHECK(purpose IN ('verify','reset')),
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at INTEGER NOT NULL,
+  used_at INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS auth_limits (
+  subject_hash TEXT NOT NULL,
+  action TEXT NOT NULL,
+  window_start INTEGER NOT NULL,
+  attempts INTEGER NOT NULL,
+  PRIMARY KEY(subject_hash,action)
 );
 CREATE TABLE IF NOT EXISTS organisations (
   id INTEGER PRIMARY KEY,
@@ -98,6 +123,7 @@ CREATE TABLE IF NOT EXISTS audit_events (
 );
 CREATE INDEX IF NOT EXISTS conversations_owner ON conversations(organisation_id,user_id,updated_at);
 CREATE INDEX IF NOT EXISTS invitations_lookup ON invitations(organisation_id,email);
+CREATE INDEX IF NOT EXISTS auth_tokens_user_purpose ON auth_tokens(user_id,purpose);
 """
 
 
@@ -160,6 +186,171 @@ def ensure_user(email: str, name: str = "", google_linked: bool = False) -> dict
                 (user["id"], cur.lastrowid, "owner", stamp),
             )
         return user
+
+
+def normalise_email(value: str) -> str:
+    value = (value or "").strip().lower()
+    return value if re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value) else ""
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    digest = hashlib.scrypt(password.encode(), salt=salt, n=2**14, r=8, p=1)
+    return "scrypt$16384$" + base64.urlsafe_b64encode(salt).decode() + "$" + base64.urlsafe_b64encode(digest).decode()
+
+
+def verify_password(password: str, encoded: str) -> bool:
+    try:
+        algorithm, cost, salt, expected = encoded.split("$", 3)
+        if algorithm != "scrypt":
+            return False
+        actual = hashlib.scrypt(
+            password.encode(),
+            salt=base64.urlsafe_b64decode(salt),
+            n=int(cost),
+            r=8,
+            p=1,
+        )
+        return hmac.compare_digest(actual, base64.urlsafe_b64decode(expected))
+    except (ValueError, TypeError):
+        return False
+
+
+def auth_attempt_allowed(subject: str, action: str, limit: int, window: int) -> bool:
+    stamp = now()
+    subject_hash = hashlib.sha256((subject or "").encode()).hexdigest()
+    with connect() as con:
+        row = con.execute(
+            "SELECT window_start,attempts FROM auth_limits WHERE subject_hash=? AND action=?",
+            (subject_hash, action),
+        ).fetchone()
+        if not row or row["window_start"] <= stamp - window:
+            con.execute(
+                """INSERT INTO auth_limits(subject_hash,action,window_start,attempts) VALUES(?,?,?,1)
+                   ON CONFLICT(subject_hash,action) DO UPDATE SET
+                   window_start=excluded.window_start,attempts=1""",
+                (subject_hash, action, stamp),
+            )
+            return True
+        if row["attempts"] >= limit:
+            return False
+        con.execute(
+            "UPDATE auth_limits SET attempts=attempts+1 WHERE subject_hash=? AND action=?",
+            (subject_hash, action),
+        )
+        return True
+
+
+def issue_auth_token(user_id: int, purpose: str, ttl: int) -> str:
+    token = secrets.token_urlsafe(32)
+    stamp = now()
+    with connect() as con:
+        con.execute(
+            "UPDATE auth_tokens SET used_at=? WHERE user_id=? AND purpose=? AND used_at IS NULL",
+            (stamp, user_id, purpose),
+        )
+        con.execute(
+            """INSERT INTO auth_tokens(user_id,purpose,token_hash,expires_at,created_at)
+               VALUES(?,?,?,?,?)""",
+            (user_id, purpose, hashlib.sha256(token.encode()).hexdigest(), stamp + ttl, stamp),
+        )
+    return token
+
+
+def prepare_registration(email: str, name: str, password: str) -> tuple[dict | None, str]:
+    email = normalise_email(email)
+    name = (name or "").strip()[:120]
+    if not email or not name or len(password or "") < 10:
+        return None, "Use your name, a valid email, and a password of at least 10 characters."
+    if not auth_attempt_allowed(email, "register", 5, 3600):
+        return None, "Too many attempts. Please try again later."
+    user = ensure_user(email, name)
+    with connect() as con:
+        credential = con.execute(
+            "SELECT is_verified FROM password_credentials WHERE user_id=?", (user["id"],)
+        ).fetchone()
+        if credential and credential["is_verified"]:
+            return None, "An account already exists. Sign in or reset your password."
+        con.execute(
+            """INSERT INTO password_credentials(user_id,password_hash,is_verified,updated_at)
+               VALUES(?,?,0,?) ON CONFLICT(user_id) DO UPDATE SET
+               password_hash=excluded.password_hash,updated_at=excluded.updated_at""",
+            (user["id"], hash_password(password), now()),
+        )
+    return user, ""
+
+
+def local_login(email: str, password: str) -> dict | None:
+    email = normalise_email(email)
+    if not auth_attempt_allowed(email, "login", 10, 900):
+        return None
+    with connect() as con:
+        row = con.execute(
+            """SELECT u.*,c.password_hash,c.is_verified FROM users u
+               JOIN password_credentials c ON c.user_id=u.id WHERE u.email=?""",
+            (email,),
+        ).fetchone()
+    if not row or not row["is_verified"] or not verify_password(password or "", row["password_hash"]):
+        return None
+    return dict(row)
+
+
+def consume_auth_token(token: str, purpose: str) -> dict | None:
+    stamp = now()
+    token_hash = hashlib.sha256((token or "").encode()).hexdigest()
+    with connect() as con:
+        row = con.execute(
+            """SELECT t.id,t.user_id,u.email,u.name FROM auth_tokens t
+               JOIN users u ON u.id=t.user_id
+               WHERE t.token_hash=? AND t.purpose=? AND t.used_at IS NULL AND t.expires_at>?""",
+            (token_hash, purpose, stamp),
+        ).fetchone()
+        if not row:
+            return None
+        con.execute("UPDATE auth_tokens SET used_at=? WHERE id=?", (stamp, row["id"]))
+        if purpose == "verify":
+            con.execute(
+                "UPDATE password_credentials SET is_verified=1,updated_at=? WHERE user_id=?",
+                (stamp, row["user_id"]),
+            )
+        return dict(row)
+
+
+def prepare_password_reset(email: str) -> tuple[dict | None, str]:
+    email = normalise_email(email)
+    if not email or not auth_attempt_allowed(email, "forgot", 5, 3600):
+        return None, ""
+    with connect() as con:
+        row = con.execute(
+            """SELECT u.* FROM users u LEFT JOIN password_credentials c ON c.user_id=u.id
+               WHERE u.email=? AND (u.google_linked=1 OR c.is_verified=1)""",
+            (email,),
+        ).fetchone()
+    return (dict(row), "") if row else (None, "")
+
+
+def reset_password(token: str, password: str) -> dict | None:
+    if len(password or "") < 10:
+        return None
+    user = consume_auth_token(token, "reset")
+    if not user:
+        return None
+    with connect() as con:
+        con.execute(
+            """INSERT INTO password_credentials(user_id,password_hash,is_verified,updated_at)
+               VALUES(?,?,1,?) ON CONFLICT(user_id) DO UPDATE SET
+               password_hash=excluded.password_hash,is_verified=1,updated_at=excluded.updated_at""",
+            (user["user_id"], hash_password(password), now()),
+        )
+    return user
+
+
+def verify_password_credential_for_google(user_id: int) -> None:
+    with connect() as con:
+        con.execute(
+            "UPDATE password_credentials SET is_verified=1,updated_at=? WHERE user_id=?",
+            (now(), user_id),
+        )
 
 
 def membership(user_id: int, organisation_id: int | None = None) -> dict | None:

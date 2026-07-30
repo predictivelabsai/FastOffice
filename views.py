@@ -194,9 +194,12 @@ def landing_page(auth_error: str = ""):
     )
 
 
-def login_page(next_path: str = "/", error: str = "", dev_enabled: bool = False):
+GOOGLE_ICON = NotStr('<svg width="18" height="18" viewBox="0 0 18 18"><path d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.91c1.7-1.57 2.69-3.88 2.69-6.62z" fill="#4285F4"/><path d="M9 18c2.43 0 4.47-.81 5.96-2.18l-2.91-2.26c-.81.54-1.84.86-3.05.86-2.34 0-4.33-1.58-5.04-3.71H.96v2.33A9 9 0 0 0 9 18z" fill="#34A853"/><path d="M3.96 10.71A5.4 5.4 0 0 1 3.68 9c0-.59.1-1.17.28-1.71V4.96H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.04l3-2.33z" fill="#FBBC05"/><path d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.58A8.64 8.64 0 0 0 9 0 9 9 0 0 0 .96 4.96l3 2.33C4.67 5.16 6.66 3.58 9 3.58z" fill="#EA4335"/></svg>')
+
+
+def auth_shell(title: str, intro: str, content):
     return Html(
-        head("Sign in"),
+        head(title),
         Body(
             Div(
                 A("← Back", href="/", cls="back-link"),
@@ -213,25 +216,9 @@ def login_page(next_path: str = "/", error: str = "", dev_enabled: bool = False)
                 ),
                 Div(
                     Div(
-                        H2("Sign in to FastOffice"),
-                        P("Continue with your organisation account."),
-                        A(
-                            NotStr('<svg width="18" height="18" viewBox="0 0 18 18"><path d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.91c1.7-1.57 2.69-3.88 2.69-6.62z" fill="#4285F4"/><path d="M9 18c2.43 0 4.47-.81 5.96-2.18l-2.91-2.26c-.81.54-1.84.86-3.05.86-2.34 0-4.33-1.58-5.04-3.71H.96v2.33A9 9 0 0 0 9 18z" fill="#34A853"/><path d="M3.96 10.71A5.4 5.4 0 0 1 3.68 9c0-.59.1-1.17.28-1.71V4.96H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.04l3-2.33z" fill="#FBBC05"/><path d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.58A8.64 8.64 0 0 0 9 0 9 9 0 0 0 .96 4.96l3 2.33C4.67 5.16 6.66 3.58 9 3.58z" fill="#EA4335"/></svg>'),
-                            "Continue with Google",
-                            href=f"/auth/google?next={quote(next_path)}",
-                            cls="google-button",
-                        ),
-                        Div(Span(), Small("or, for local development"), Span(), cls="divider") if dev_enabled else None,
-                        Form(
-                            Label("Email", Input(name="email", type="email", value="kaljuvee@gmail.com", autocomplete="email", required=True)),
-                            Input(name="next_path", type="hidden", value=next_path),
-                            Button("Continue", type="submit", cls="btn btn-primary full"),
-                            method="post",
-                            action="/auth/dev",
-                            cls="login-form",
-                        ) if dev_enabled else None,
-                        P(error, cls="notice error") if error else None,
-                        Small("By continuing, you agree to the deployment's terms and privacy policy.", cls="login-terms"),
+                        H2(title),
+                        P(intro),
+                        content,
                         cls="login-card",
                     ),
                     cls="login-panel",
@@ -239,6 +226,94 @@ def login_page(next_path: str = "/", error: str = "", dev_enabled: bool = False)
                 cls="login-layout",
             ),
             cls="login-body",
+        ),
+    )
+
+
+def login_page(next_path: str = "/", error: str = "", dev_enabled: bool = False, message: str = "", csrf_token: str = ""):
+    return auth_shell(
+        "Sign in to FastOffice",
+        "Use your email and password or continue with Google.",
+        Div(
+            A(GOOGLE_ICON, "Continue with Google", href=f"/auth/google?next={quote(next_path)}", cls="google-button"),
+            Div(Span(), Small("or"), Span(), cls="divider"),
+            Form(
+                Label("Email", Input(name="email", type="email", autocomplete="email", required=True)),
+                Label("Password", Input(name="password", type="password", autocomplete="current-password", required=True)),
+                Input(name="next_path", type="hidden", value=next_path),
+                Input(name="csrf_token", type="hidden", value=csrf_token),
+                A("Forgot password?", href="/forgot-password", cls="auth-link auth-forgot"),
+                Button("Sign in", type="submit", cls="btn btn-primary full"),
+                method="post", action="/auth/local/login", cls="login-form",
+            ),
+            P(error, cls="notice error") if error else None,
+            P(message, cls="notice ok") if message else None,
+            P("New to FastOffice? ", A("Create an account", href=f"/register?next={quote(next_path)}"), cls="auth-switch"),
+            Form(
+                Input(name="email", type="hidden", value="kaljuvee@gmail.com"),
+                Input(name="next_path", type="hidden", value=next_path),
+                Button("Development sign in", type="submit", cls="auth-link"),
+                method="post", action="/auth/dev",
+            ) if dev_enabled else None,
+            Small("By continuing, you agree to the deployment's terms and privacy policy.", cls="login-terms"),
+        ),
+    )
+
+
+def register_page(next_path: str = "/app", error: str = "", message: str = "", csrf_token: str = ""):
+    return auth_shell(
+        "Create your FastOffice account",
+        "Start a workspace for your team. We’ll verify your email before sign-in.",
+        Div(
+            Form(
+                Label("Name", Input(name="name", autocomplete="name", required=True)),
+                Label("Email", Input(name="email", type="email", autocomplete="email", required=True)),
+                Label("Password", Input(name="password", type="password", autocomplete="new-password", minlength="10", required=True)),
+                Label("Confirm password", Input(name="password_confirm", type="password", autocomplete="new-password", minlength="10", required=True)),
+                Input(name="next_path", type="hidden", value=next_path),
+                Input(name="csrf_token", type="hidden", value=csrf_token),
+                Button("Create account", type="submit", cls="btn btn-primary full"),
+                method="post", action="/auth/local/register", cls="login-form",
+            ),
+            P(error, cls="notice error") if error else None,
+            P(message, cls="notice ok") if message else None,
+            P("Already registered? ", A("Sign in", href=f"/login?next={quote(next_path)}"), cls="auth-switch"),
+        ),
+    )
+
+
+def forgot_password_page(message: str = "", error: str = "", csrf_token: str = ""):
+    return auth_shell(
+        "Reset your password",
+        "Enter your email and we’ll send a one-time reset link.",
+        Div(
+            Form(
+                Label("Email", Input(name="email", type="email", autocomplete="email", required=True)),
+                Input(name="csrf_token", type="hidden", value=csrf_token),
+                Button("Send reset link", type="submit", cls="btn btn-primary full"),
+                method="post", action="/auth/local/forgot", cls="login-form",
+            ),
+            P(error, cls="notice error") if error else None,
+            P(message, cls="notice ok") if message else None,
+            P(A("Back to sign in", href="/login"), cls="auth-switch"),
+        ),
+    )
+
+
+def reset_password_page(token: str, error: str = "", csrf_token: str = ""):
+    return auth_shell(
+        "Choose a new password",
+        "Use at least 10 characters.",
+        Div(
+            Form(
+                Input(name="token", type="hidden", value=token),
+                Input(name="csrf_token", type="hidden", value=csrf_token),
+                Label("New password", Input(name="password", type="password", autocomplete="new-password", minlength="10", required=True)),
+                Label("Confirm password", Input(name="password_confirm", type="password", autocomplete="new-password", minlength="10", required=True)),
+                Button("Save new password", type="submit", cls="btn btn-primary full"),
+                method="post", action="/auth/local/reset", cls="login-form",
+            ),
+            P(error, cls="notice error") if error else None,
         ),
     )
 
