@@ -266,7 +266,7 @@ def app_header(user: dict, org: dict, active: str = "home"):
     )
 
 
-def suite_home(user: dict, org: dict):
+def suite_home(user: dict, org: dict, recent: list[dict] | None = None, failures: list[dict] | None = None):
     products = [
         A(
             Div(Span(p["icon"], cls="app-icon", style=f"--product:{p['accent']}"), Span("Soon", cls="soon") if p.get("coming_soon") else Span("↗", cls="open-arrow")),
@@ -291,16 +291,42 @@ def suite_home(user: dict, org: dict):
                 ),
                 Section(H2("Your apps"), Div(*products, cls="app-grid"), cls="dashboard-section"),
                 Section(
-                    Div(H2("Recent work"), Button("View all", cls="text-button")),
-                    Div(
-                        Div(Span("D", cls="file-type blue"), Div(Strong("Q3 strategy brief"), Small("FastDocs · Edited 12 minutes ago")), Span("⋯")),
-                        Div(Span("S", cls="file-type green"), Div(Strong("Operating plan"), Small("FastSheets · Edited yesterday")), Span("⋯")),
-                        Div(Span("P", cls="file-type amber"), Div(Strong("Board update"), Small("FastSlides · Edited Monday")), Span("⋯")),
-                        cls="recent-list",
-                    ),
+                    Div(H2("Recent work"), A("Search all", href="/search", cls="text-button")),
+                    Div(*[
+                        A(Span(item["product"][4:5], cls="file-type blue"), Div(Strong(item["title"]), Small(item["product"])), Span("↗"), href=item["url"])
+                        for item in (recent or [])
+                    ], cls="recent-list") if recent else Div(P("No tenant-scoped recent work yet.", cls="muted"), cls="recent-list empty-recent"),
                     cls="dashboard-section recent-section",
                 ),
                 cls="dashboard",
+            ),
+        ),
+    )
+
+
+def search_page(user: dict, org: dict, query: str, items: list[dict], failures: list[dict]):
+    return Html(
+        head("Search"),
+        Body(
+            app_header(user, org),
+            Main(
+                Div(
+                    Span("WORKSPACE SEARCH", cls="eyebrow"),
+                    H1("Find work across FastOffice"),
+                    Form(
+                        Input(name="q", value=query, placeholder="Search documents, workbooks, decks, files, meetings and mail…", autofocus=True),
+                        Button("Search", cls="btn btn-primary"),
+                        method="get", action="/search", cls="search-form",
+                    ),
+                    cls="page-heading",
+                ),
+                P(f"{len(items)} results across the connected suite") if query else P("Enter a search above.", cls="muted"),
+                Div(*[
+                    A(Span(item["product"], cls="artifact-product"), H3(item["title"]), Span("Open ↗"), href=item["url"], cls="search-result")
+                    for item in items
+                ], cls="search-results"),
+                P(f"{len(failures)} services were unavailable; partial results are shown.", cls="notice error") if failures else None,
+                cls="settings-page",
             ),
         ),
     )

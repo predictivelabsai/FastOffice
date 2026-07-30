@@ -18,7 +18,7 @@ load_dotenv()
 import db
 import views
 from ai import ProviderError, chat
-from adapters import execute_create
+from adapters import aggregate, execute_create
 from products import BY_SLUG, proposed_action
 from security import encrypt_secret, sign_ticket
 
@@ -161,7 +161,19 @@ def get(session):
     ctx = require_context(session)
     if isinstance(ctx, RedirectResponse):
         return ctx
-    return views.suite_home(*ctx)
+    user, org = ctx
+    recent, failures = aggregate(user, org, limit_per_service=3)
+    return views.suite_home(user, org, recent[:9], failures)
+
+
+@rt("/search")
+def get(session, q: str = ""):
+    ctx = require_context(session)
+    if isinstance(ctx, RedirectResponse):
+        return ctx
+    user, org = ctx
+    items, failures = aggregate(user, org, q.strip(), limit_per_service=20) if q.strip() else ([], [])
+    return views.search_page(user, org, q.strip(), items, failures)
 
 
 @rt("/launch/{slug}")
@@ -267,7 +279,7 @@ def post(session, action_id: int, decision: str):
     else:
         try:
             payload = json.loads(pending["payload_json"])
-            external = execute_create(pending["product"], payload, pending["idempotency_key"])
+            external = execute_create(pending["product"], payload, pending["idempotency_key"], user, org)
             result = db.resolve_action(user["id"], org["id"], action_id, "completed", external)
         except (ValueError, httpx.HTTPError, HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
             result = db.resolve_action(user["id"], org["id"], action_id, "failed", {"error": str(exc)})

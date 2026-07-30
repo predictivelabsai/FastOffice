@@ -7,7 +7,7 @@ def test_landing_has_suite_and_sign_in(client):
     assert "Your work. Your data." in response.text
     assert "FastPilot" in response.text
     assert 'data-testid="signin-nav"' in response.text
-    assert "FastCalendar" in response.text
+    assert "FastCal" in response.text
 
 
 def test_health(client):

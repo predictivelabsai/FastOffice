@@ -13,7 +13,10 @@ from cryptography.fernet import Fernet, InvalidToken
 
 
 def _secret() -> bytes:
-    raw = os.getenv("FASTOFFICE_SESSION_SECRET", "fastoffice-dev-secret-change-me")
+    raw = (
+        os.getenv("FASTOFFICE_SSO_SECRET")
+        or os.getenv("FASTOFFICE_SESSION_SECRET", "fastoffice-dev-secret-change-me")
+    )
     return raw.encode()
 
 
