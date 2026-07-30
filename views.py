@@ -97,7 +97,7 @@ def landing_page(auth_error: str = ""):
                     ),
                     Div(
                         Div(
-                            Div(Span("F", cls="mini-logo"), Span("FastOffice"), Span("9 apps", cls="demo-muted"), cls="demo-bar"),
+                            Div(Span("F", cls="mini-logo"), Span("FastOffice"), Span("10 apps", cls="demo-muted"), cls="demo-bar"),
                             Div(
                                 Div(
                                     Span("Good morning", cls="demo-kicker"),

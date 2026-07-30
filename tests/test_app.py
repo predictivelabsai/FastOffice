@@ -8,6 +8,7 @@ def test_landing_has_suite_and_sign_in(client):
     assert "FastPilot" in response.text
     assert 'data-testid="signin-nav"' in response.text
     assert "FastCal" in response.text
+    assert "FastWiki" in response.text
 
 
 def test_health(client):

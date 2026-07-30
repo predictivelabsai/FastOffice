@@ -10,6 +10,7 @@ PRODUCTS = [
     {"slug": "insights", "name": "FastInsights", "label": "Insights", "description": "Ask governed data and build trusted dashboards.", "accent": "#6d28d9", "url": "https://insights.fastsme.com", "icon": "I"},
     {"slug": "mail", "name": "FastMail", "label": "Mail", "description": "A calmer inbox with AI-assisted drafting.", "accent": "#dc2626", "url": "https://mail.fastsme.com", "icon": "E"},
     {"slug": "calendar", "name": "FastCal", "label": "Calendar", "description": "Coordinate calendars, availability and external bookings.", "accent": "#0891b2", "url": "https://calendar.fastsme.com", "icon": "C"},
+    {"slug": "wiki", "name": "FastWiki", "label": "Knowledge", "description": "Turn team knowledge into connected, durable pages.", "accent": "#4f46e5", "url": "https://wiki.fastsme.com", "icon": "W"},
     {"slug": "pilot", "name": "FastPilot", "label": "AI workspace", "description": "Create and act across your entire workspace.", "accent": "#4f46e5", "url": "/pilot", "icon": "✦"},
 ]
 

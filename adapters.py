@@ -24,6 +24,7 @@ CONTRACTS = {
     "meet": ResourceContract("/v1/meetings", frozenset({"GET", "POST"})),
     "insights": ResourceContract("/v1/dashboards", frozenset({"GET", "POST"})),
     "mail": ResourceContract("/v1/messages", frozenset({"GET"})),
+    "wiki": ResourceContract("/v1/pages", frozenset({"GET", "POST"})),
 }
 
 
