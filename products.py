@@ -4,6 +4,7 @@ from __future__ import annotations
 PRODUCTS = [
     {"slug": "docs", "name": "FastDocs", "label": "Documents", "description": "Write, structure and share living documents.", "accent": "#2563eb", "url": "https://docs.fastsme.com", "icon": "D"},
     {"slug": "sheets", "name": "FastSheets", "label": "Spreadsheets", "description": "Model and analyse work with safe formulas.", "accent": "#15803d", "url": "https://sheets.fastsme.com", "icon": "S"},
+    {"slug": "fpa", "name": "FastFPA", "label": "Planning", "description": "Plan budgets, rolling forecasts, scenarios and full financial statements.", "accent": "#0f766e", "url": "https://fpa.fastsme.com", "icon": "F"},
     {"slug": "slides", "name": "FastSlides", "label": "Presentations", "description": "Turn ideas into clear, compelling decks.", "accent": "#d97706", "url": "https://slides.fastsme.com", "icon": "P"},
     {"slug": "drive", "name": "FastDrive", "label": "Files", "description": "Store, find and govern your team's files.", "accent": "#0f766e", "url": "https://drive.fastsme.com", "icon": "F"},
     {"slug": "meet", "name": "FastMeet", "label": "Meetings", "description": "Plan meetings and carry decisions forward.", "accent": "#7c3aed", "url": "https://meet.fastsme.com", "icon": "M"},
