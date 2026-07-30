@@ -29,7 +29,7 @@ CONTRACTS = {
 
 def service_url(slug: str) -> str:
     configured = os.getenv(f"FASTOFFICE_{slug.upper()}_API_URL", "")
-    return (configured or BY_SLUG[slug]["url"]).rstrip("/")
+    return (configured.rstrip("/") if configured else BY_SLUG[slug]["url"].rstrip("/") + "/api")
 
 
 def suite_token(slug: str, user: dict, org: dict) -> str:
