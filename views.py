@@ -14,6 +14,14 @@ FAVICON = "data:image/svg+xml," + quote(
     safe="",
 )
 
+PARTNERS = (
+    ("SAASPASS", "https://saaspass.com/", "https://saaspass.com/_next/static/assets/0176aeff921f6359fee88e796be31ace.png", "Full-stack identity and access management spanning MFA, SSO, passwordless access and integration APIs."),
+    ("Sixty Four", "https://sixtyfour.ee/", "https://sixtyfour.ee/favicon.ico", "A senior Tallinn technology studio delivering software, AI consultancy, service design and public-sector programmes."),
+    ("EDI Labs", "https://edilabs.tech/", "https://edilabs.tech/static/favicon.svg", "AI and data engineering for document intelligence, forecasting, geospatial systems and agentic workflows."),
+    ("Predictive Labs", "https://predictivelabs.ai/", "https://predictivelabs.ai/static/favicon.svg", "Auditable AI systems for health, defence, public management, mobility and financial services."),
+    ("Consistente", "https://consistente.tech/", "https://consistente.tech/static/favicon.svg", "Enterprise AI delivery across financial services, healthcare, the public sector and technology."),
+)
+
 
 def head(title: str, description: str = "Your work. Your data. Your freedom.") -> Head:
     return Head(
@@ -49,12 +57,24 @@ def public_nav():
                 A("Products", href="#products", cls="nav-link"),
                 A("FastPilot", href="#pilot", cls="nav-link"),
                 A("Open source", href="#freedom", cls="nav-link"),
+                A("Partners", href="#partners", cls="nav-link"),
                 A("Sign In", href="/login", cls="btn btn-quiet", data_testid="signin-nav"),
                 cls="nav-actions",
             ),
             cls="nav-inner",
         ),
         cls="public-nav",
+    )
+
+
+def partner_section():
+    return Section(
+        Div(Span("Partners", cls="eyebrow"), H2("Connect with trusted integration specialists."), P("Identity, software delivery, data engineering and applied-AI expertise for FastSME implementations."), cls="partner-heading"),
+        Div(*[
+            A(Div(Img(src=logo_url, alt=f"{name} logo", loading="lazy"), Span("Integration Partner"), cls="partner-card-top"), H3(name), P(description), Small("Visit website ↗"), href=url, target="_blank", rel="noopener noreferrer", cls="partner-card")
+            for name, url, logo_url, description in PARTNERS
+        ], cls="partner-grid"),
+        id="partners", cls="section partners",
     )
 
 
@@ -178,6 +198,7 @@ def landing_page(auth_error: str = ""):
                     id="freedom",
                     cls="section freedom",
                 ),
+                partner_section(),
                 Section(
                     H2("A workspace should expand your possibilities,", Br(), "not your licence bill."),
                     A("Sign In to FastOffice", href="/login", cls="btn btn-primary"),
