@@ -15,6 +15,7 @@ def test_landing_has_suite_and_sign_in(client):
     assert 'data-testid="signin-nav"' in response.text
     assert "FastCal" in response.text
     assert "FastWiki" in response.text
+    assert "FastVoice" in response.text
 
 
 def test_health(client):
@@ -214,3 +215,12 @@ def test_launch_uses_canonical_subdomain_until_sso_callbacks_ready(authed):
     response = authed.get("/launch/docs", follow_redirects=False)
     assert response.status_code == 303
     assert response.headers["location"] == "https://docs.fastsme.com"
+
+
+def test_fastvoice_launch_uses_audience_bound_suite_callback(authed, monkeypatch):
+    monkeypatch.setenv("FASTOFFICE_SUITE_SSO_READY", "true")
+    response = authed.get("/launch/voice", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"].startswith(
+        "https://voice.fastsme.com/auth/suite/callback?ticket="
+    )
