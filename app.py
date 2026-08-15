@@ -287,9 +287,9 @@ def get(session, q: str = ""):
 
 @rt("/launch/{slug}")
 def get(session, slug: str):
-    ctx = require_context(session)
-    if isinstance(ctx, RedirectResponse):
-        return ctx
+    ctx = context(session)
+    if not ctx:
+        return RedirectResponse(f"/login?next={quote(f'/launch/{slug}')}", status_code=303)
     user, org = ctx
     product = BY_SLUG.get(slug)
     if not product or product.get("coming_soon"):

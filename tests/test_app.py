@@ -224,3 +224,12 @@ def test_fastvoice_launch_uses_audience_bound_suite_callback(authed, monkeypatch
     assert response.headers["location"].startswith(
         "https://voice.fastsme.com/auth/suite/callback?ticket="
     )
+
+
+def test_fastvoice_launch_survives_google_login(client):
+    response = client.get("/launch/voice", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login?next=/launch/voice"
+
+    login = client.get(response.headers["location"])
+    assert 'href="/auth/google?next=/launch/voice"' in login.text
