@@ -58,6 +58,7 @@ def public_nav():
                 A("Products", href="#products", cls="nav-link"),
                 A("FastPilot", href="#pilot", cls="nav-link"),
                 A("Open source", href="#freedom", cls="nav-link"),
+                A("Pricing", href="#pricing", cls="nav-link"),
                 A("Partners", href="#partners", cls="nav-link"),
                 A("Sign In", href="/login", cls="btn btn-quiet", data_testid="signin-nav"),
                 cls="nav-actions",
@@ -67,6 +68,18 @@ def public_nav():
         cls="public-nav",
     )
 
+
+
+def pricing_section():
+    return Section(
+        Div(Span("Pricing", cls="eyebrow"), H2("Simple pricing for every FastSME product."), P("Every Fast* product uses the same two options: bring your own cloud for free, or host with us for €1 per month."), cls="partner-heading"),
+        Div(
+            Article(Span("BYOC", cls="eyebrow"), H3("Bring Your Own Cloud"), P(Strong("Free")), P("Self-host on your own infrastructure or cloud. Full control of data and upgrades. No per-seat platform fee."), cls="product-card"),
+            Article(Span("Hosted", cls="eyebrow"), H3("Host with us"), P(Strong("€1 / month")), P("We run the product for you on FastSME-managed infrastructure. €1 per product per month."), cls="product-card"),
+            cls="partner-grid",
+        ),
+        id="pricing", cls="section partners",
+    )
 
 def partner_section():
     return Section(
@@ -199,6 +212,7 @@ def landing_page(auth_error: str = ""):
                     id="freedom",
                     cls="section freedom",
                 ),
+                pricing_section(),
                 partner_section(),
                 Section(
                     H2("A workspace should expand your possibilities,", Br(), "not your licence bill."),
